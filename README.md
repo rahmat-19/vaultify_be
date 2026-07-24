@@ -65,6 +65,9 @@ second. Do not commit `.env`.
 | `RATE_LIMIT_LOGIN` | Per-IP login rate | `5/minute` |
 | `ACCOUNT_LOCK_MINUTES` | Lockout duration after five failures | `15` |
 | `LOG_LEVEL` | Application logging level | `INFO` |
+| `LOG_FILE` | Rotating application log path | `logs/app.log` |
+| `LOG_MAX_BYTES` | Maximum size of each log file | `5242880` |
+| `LOG_BACKUP_COUNT` | Number of rotated log files retained | `5` |
 
 ## Database migrations
 

@@ -18,7 +18,12 @@ from app.core.rate_limit import limiter
 from app.middleware.security import SecurityHeadersMiddleware
 
 settings = get_settings()
-configure_logging(settings.log_level)
+configure_logging(
+    settings.log_level,
+    settings.log_file,
+    settings.log_max_bytes,
+    settings.log_backup_count,
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
