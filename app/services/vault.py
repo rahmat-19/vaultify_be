@@ -2,6 +2,7 @@
 
 import uuid
 
+from app.core.audit import AuditTrail
 from app.core.exceptions import NotFoundError
 from app.models.vault_item import VaultItem
 from app.repositories.vault import VaultRepository
@@ -13,18 +14,26 @@ class VaultService:
     """Ownership-safe vault use cases."""
 
     def __init__(
-        self, repository: VaultRepository, encryption: EncryptionService
+        self,
+        repository: VaultRepository,
+        encryption: EncryptionService,
+        audit: AuditTrail,
     ) -> None:
         self.repository = repository
         self.encryption = encryption
+        self.audit = audit
 
     def list_items(self, owner_id: uuid.UUID) -> list[VaultResponse]:
-        return [
+        result = [
             self._to_response(item) for item in self.repository.list_for_owner(owner_id)
         ]
+        self.audit.record("vault.list", "success", actor=owner_id)
+        return result
 
     def get(self, item_id: uuid.UUID, owner_id: uuid.UUID) -> VaultResponse:
-        return self._to_response(self._get_owned(item_id, owner_id))
+        result = self._to_response(self._get_owned(item_id, owner_id))
+        self.audit.record("vault.read", "success", actor=owner_id, resource=item_id)
+        return result
 
     def create(self, payload: VaultCreate, owner_id: uuid.UUID) -> VaultResponse:
         item = VaultItem(
@@ -36,7 +45,9 @@ class VaultService:
             website=str(payload.website) if payload.website else None,
             category=payload.category,
         )
-        return self._to_response(self.repository.create(item))
+        saved = self.repository.create(item)
+        self.audit.record("vault.create", "success", actor=owner_id, resource=saved.id)
+        return self._to_response(saved)
 
     def update(
         self, item_id: uuid.UUID, payload: VaultUpdate, owner_id: uuid.UUID
@@ -52,15 +63,20 @@ class VaultService:
             item.website = str(website) if website else None
         for field, value in changes.items():
             setattr(item, field, value)
-        return self._to_response(self.repository.save(item))
+        saved = self.repository.save(item)
+        self.audit.record("vault.update", "success", actor=owner_id, resource=item_id)
+        return self._to_response(saved)
 
     def delete(self, item_id: uuid.UUID, owner_id: uuid.UUID) -> None:
         self.repository.delete(self._get_owned(item_id, owner_id))
+        self.audit.record("vault.delete", "success", actor=owner_id, resource=item_id)
 
     def search(self, owner_id: uuid.UUID, term: str) -> list[VaultResponse]:
-        return [
+        result = [
             self._to_response(item) for item in self.repository.search(owner_id, term)
         ]
+        self.audit.record("vault.search", "success", actor=owner_id)
+        return result
 
     def _get_owned(self, item_id: uuid.UUID, owner_id: uuid.UUID) -> VaultItem:
         item = self.repository.get_for_owner(item_id, owner_id)

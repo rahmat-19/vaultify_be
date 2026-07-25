@@ -6,6 +6,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.audit import AuditTrail
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AuthenticationError
 from app.database.session import get_db
@@ -32,11 +33,21 @@ def get_auth_service(
     settings: SettingsDep,
     tokens: Annotated[TokenService, Depends(get_token_service)],
 ) -> AuthService:
-    return AuthService(UserRepository(db), RefreshTokenRepository(db), tokens, settings)
+    return AuthService(
+        UserRepository(db),
+        RefreshTokenRepository(db),
+        tokens,
+        settings,
+        AuditTrail(settings.jwt_secret_key),
+    )
 
 
 def get_vault_service(db: DbDep, settings: SettingsDep) -> VaultService:
-    return VaultService(VaultRepository(db), EncryptionService(settings.encryption_key))
+    return VaultService(
+        VaultRepository(db),
+        EncryptionService(settings.encryption_key),
+        AuditTrail(settings.jwt_secret_key),
+    )
 
 
 def get_current_user(

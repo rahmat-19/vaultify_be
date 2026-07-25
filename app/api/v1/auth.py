@@ -55,7 +55,7 @@ def refresh(
 
 
 @router.post("/logout", response_model=ApiResponse[dict])
-def logout(
+def logout(  
     payload: LogoutRequest, current_user: CurrentUser, service: AuthServiceDep
 ) -> ApiResponse[dict]:
     """Revoke the supplied current-user refresh token."""

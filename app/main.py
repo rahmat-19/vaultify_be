@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy.exc import DBAPIError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.router import api_router
+from app.core.audit import configure_audit_logging
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging
@@ -21,6 +23,11 @@ settings = get_settings()
 configure_logging(
     settings.log_level,
     settings.log_file,
+    settings.log_max_bytes,
+    settings.log_backup_count,
+)
+configure_audit_logging(
+    settings.audit_log_file,
     settings.log_max_bytes,
     settings.log_backup_count,
 )
@@ -124,8 +131,16 @@ async def validation_error_handler(
 
 @app.exception_handler(Exception)
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Log unexpected failures and return a generic response."""
-    logger.exception("Unhandled application error")
+    """Log a safe one-line summary and return a generic response."""
+    error_type = type(exc).__name__
+    error_reason = str(exc.orig) if isinstance(exc, DBAPIError) else error_type
+    logger.error(
+        "Unhandled error method=%s path=%s type=%s reason=%s",
+        request.method,
+        request.url.path,
+        error_type,
+        error_reason.replace("\n", " ")[:300],
+    )
     return JSONResponse(
         status_code=500,
         content={

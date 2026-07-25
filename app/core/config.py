@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     account_lock_minutes: int = Field(default=15, ge=1, le=1440)
     log_level: str = "INFO"
     log_file: str = "logs/app.log"
+    audit_log_file: str = "logs/audit.log"
     log_max_bytes: int = Field(default=5_242_880, ge=1)
     log_backup_count: int = Field(default=5, ge=0)
 

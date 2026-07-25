@@ -3,6 +3,7 @@
 import hmac
 from datetime import UTC, datetime, timedelta
 
+from app.core.audit import AuditTrail
 from app.core.config import Settings
 from app.core.exceptions import AuthenticationError, ConflictError
 from app.models.user import User
@@ -26,27 +27,33 @@ class AuthService:
         refresh_tokens: RefreshTokenRepository,
         tokens: TokenService,
         settings: Settings,
+        audit: AuditTrail,
     ) -> None:
         self.users = users
         self.refresh_tokens = refresh_tokens
         self.tokens = tokens
         self.settings = settings
+        self.audit = audit
 
     def register(self, payload: RegisterRequest) -> User:
         if self.users.get_by_email(str(payload.email)):
             raise ConflictError("An account with this email already exists")
-        return self.users.create(
+        user = self.users.create(
             payload.fullname, str(payload.email), hash_password(payload.password)
         )
+        self.audit.record("auth.register", "success", actor=user.id)
+        return user
 
     def login(self, payload: LoginRequest) -> TokenResponse:
         user = self.users.get_by_email(str(payload.email))
         if user is None:
             # Equalize much of the hashing work for unknown accounts.
             verify_password(payload.password, DUMMY_PASSWORD_HASH)
+            self.audit.record("auth.login", "failure", actor=str(payload.email))
             raise AuthenticationError()
         now = datetime.now(UTC)
         if user.locked_until and _as_utc(user.locked_until) > now:
+            self.audit.record("auth.login", "blocked", actor=user.id)
             raise AuthenticationError("Account is temporarily locked")
         if not verify_password(payload.password, user.password_hash):
             attempts = user.failed_login_attempts + 1
@@ -57,10 +64,13 @@ class AuthService:
                 )
                 attempts = 0
             self.users.record_failed_login(user, attempts, locked_until)
+            self.audit.record("auth.login", "failure", actor=user.id)
             raise AuthenticationError()
         if not user.is_active:
+            self.audit.record("auth.login", "blocked", actor=user.id)
             raise AuthenticationError("Account is inactive")
         self.users.reset_failed_logins(user)
+        self.audit.record("auth.login", "success", actor=user.id)
         return self._issue_session(user)
 
     def refresh(self, raw_token: str) -> TokenResponse:
@@ -73,6 +83,7 @@ class AuthService:
         if user is None or not user.is_active:
             raise AuthenticationError("Invalid session")
         self.refresh_tokens.revoke(stored)
+        self.audit.record("auth.refresh", "success", actor=user.id)
         return self._issue_session(user)
 
     def logout(self, raw_token: str, current_user: User) -> None:
@@ -84,6 +95,9 @@ class AuthService:
             and hmac.compare_digest(stored.token_hash, digest)
         ):
             self.refresh_tokens.revoke(stored)
+            self.audit.record("auth.logout", "success", actor=current_user.id)
+        else:
+            self.audit.record("auth.logout", "ignored", actor=current_user.id)
 
     def _issue_session(self, user: User) -> TokenResponse:
         access_token, expires_in = self.tokens.create_access_token(user.id)

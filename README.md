@@ -66,6 +66,7 @@ second. Do not commit `.env`.
 | `ACCOUNT_LOCK_MINUTES` | Lockout duration after five failures | `15` |
 | `LOG_LEVEL` | Application logging level | `INFO` |
 | `LOG_FILE` | Rotating application log path | `logs/app.log` |
+| `AUDIT_LOG_FILE` | Privacy-preserving security audit log | `logs/audit.log` |
 | `LOG_MAX_BYTES` | Maximum size of each log file | `5242880` |
 | `LOG_BACKUP_COUNT` | Number of rotated log files retained | `5` |
 
@@ -73,6 +74,25 @@ second. Do not commit `.env`.
 
 ```bash
 alembic upgrade head
+```
+
+The latest migration also inserts one dummy user for local development:
+
+| Field | Value |
+|---|---|
+| Full name | `Dummy User` |
+| Email | `dummy@example.com` |
+| Password | `DummyUser123!` |
+
+The password is stored as an Argon2id hash, not as plaintext. These credentials
+are intended only for local development. Remove the seed migration or disable
+the account before deploying the application to production.
+
+Test the dummy user through `POST /api/v1/auth/login` after running the migration.
+Rolling back one revision removes only this seeded user:
+
+```bash
+alembic downgrade -1
 ```
 
 Create a migration after model changes:
@@ -110,6 +130,26 @@ Errors use:
 
 Send access tokens as `Authorization: Bearer <access_token>`. Mobile clients
 should keep tokens in OS secure storage and must never log them.
+
+## Privacy-preserving audit log
+
+Security-relevant user activity is written separately to `logs/audit.log`.
+Recorded events include registration, login attempts, refresh, logout, and vault
+list/read/search/create/update/delete operations. Actor and resource identifiers
+are HMAC fingerprints, so the log can correlate repeated activity without storing
+raw user IDs or vault IDs.
+
+The audit log never records names, email addresses, IP addresses, search terms,
+vault metadata, passwords, tokens, API keys, encryption keys, or secure notes.
+It is intended for security monitoring and incident investigation, not behavioral
+analytics. In production, forward it to access-controlled, append-only log
+storage and define an appropriate retention period.
+
+Example:
+
+```text
+2026-07-26 06:22:32 INFO event=vault.update outcome=success actor=d9001633b1b22c6f resource=5416147a62d2abaf
+```
 
 ## API endpoints
 
